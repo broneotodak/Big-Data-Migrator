@@ -1,0 +1,43 @@
+# FastAPI backend & async support
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+aiofiles>=23.1.0
+python-multipart>=0.0.6
+
+# Streamlit frontend and visualization
+streamlit>=1.22.0
+plotly>=5.13.0
+networkx>=3.0.0
+
+# Data processing & memory monitoring
+pandas>=2.0.1
+numpy>=1.24.3
+psutil>=5.9.5
+memory-profiler>=0.61.0
+tqdm>=4.65.0
+dask>=2023.5.0  # For parallel processing of large datasets
+
+# File format support
+openpyxl>=3.1.2  # Excel support
+python-docx>=0.8.11  # Word document support
+PyPDF2>=3.0.1  # PDF support
+pdfplumber>=0.9.0  # Alternative PDF extraction
+pytesseract>=0.3.10  # OCR support
+Pillow>=9.5.0  # Image processing
+
+# LLM integration
+llama-cpp-python>=0.1.77  # For LM Studio & CodeLlama-34B
+openai>=0.27.8  # For OpenAI API fallback
+httpx>=0.24.1  # Async HTTP client
+
+# Supabase & database
+supabase>=1.0.3
+sqlalchemy>=2.0.15
+asyncpg>=0.27.0
+psycopg2-binary>=2.9.6  # PostgreSQL adapter
+
+# Data validation & utilities
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+scikit-learn>=1.2.2  # For data analysis
+matplotlib>=3.7.1  # For visualization

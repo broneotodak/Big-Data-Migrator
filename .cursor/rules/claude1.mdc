@@ -1,0 +1,95 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Big Data Migrator - Cursor Rules
+
+## Project Context
+You are working on a Big Data Migrator system that processes large files, enables user conversation with LLM about data structure, and provides flexible output options (Supabase migration or CSV export).
+
+## Core Principles
+1. **Memory Efficiency First** - Always consider RAM usage and implement chunking for large files
+2. **User-Centric Design** - Prioritize clear communication and intuitive workflows  
+3. **Conversation-Driven** - Enable meaningful LLM discussion before any data operations
+4. **Flexible Output** - Support both direct migration and export options
+5. **Real-time Feedback** - Provide progress updates and system status
+
+## Technical Standards
+- Use async/await for I/O operations and file processing
+- Implement comprehensive error handling with user-friendly messages
+- Add detailed logging at INFO level for user actions, DEBUG for technical details
+- Include type hints for all functions and class methods
+- Use Pydantic models for data validation and serialization
+- Implement proper resource cleanup and memory management
+
+## Architecture Guidelines
+- Keep modules loosely coupled with clear interfaces
+- Use dependency injection for testability
+- Implement graceful degradation when services are unavailable
+- Design for horizontal scaling and multi-user support
+- Maintain separation between business logic and UI components
+
+## Code Quality Requirements
+- Write docstrings for all public methods and classes
+- Include unit tests for core business logic
+- Use meaningful variable and function names
+- Implement proper exception hierarchies
+- Add performance monitoring and metrics collection
+
+## LLM Integration Standards
+- Optimize prompts for context efficiency and token usage
+- Implement intelligent context compression for long conversations
+- Provide fallback mechanisms when LLM services are unavailable
+- Cache responses when appropriate to reduce costs
+- Track conversation state and user decisions
+
+## UI/UX Guidelines  
+- Show real-time memory usage and system capacity
+- Display clear progress indicators for long-running operations
+- Provide actionable error messages with resolution steps
+- Enable conversation export and decision tracking
+- Implement responsive design for different screen sizes
+
+## Database Operations
+- Use transactions for data consistency
+- Implement proper connection pooling and timeout handling
+- Provide detailed migration progress and rollback capabilities
+- Validate data integrity before and after operations
+- Support batch processing with configurable chunk sizes
+
+## File Processing Standards
+- Support streaming for large files to minimize memory usage
+- Implement robust error recovery for corrupted or malformed files
+- Provide detailed file analysis and data quality reports
+- Handle various encodings and formats gracefully
+- Enable partial processing and resume capabilities
+
+## Security Considerations
+- Validate all user inputs and file uploads
+- Implement proper authentication and authorization
+- Sanitize data before database operations
+- Use environment variables for sensitive configuration
+- Enable audit logging for all data operations
+
+## Performance Optimization
+- Monitor and limit memory usage based on system capacity
+- Implement efficient data structures and algorithms
+- Use connection pooling for database and API calls
+- Cache frequently accessed data with appropriate TTL
+- Profile and optimize critical code paths
+
+## When Making Changes
+- Consider impact on memory usage and system performance
+- Update related documentation and comments
+- Test with large files to ensure scalability
+- Verify integration points remain functional
+- Update user interface to reflect new capabilities
+
+## Error Handling Philosophy
+- Fail fast with clear error messages
+- Provide specific guidance for error resolution
+- Log errors with sufficient context for debugging
+- Implement circuit breakers for external service calls
+
+- Enable graceful degradation when possible
