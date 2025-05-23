@@ -1,0 +1,10 @@
+   __pycache__/
+   *.pyc
+   .env
+   .supabase/
+   temp/
+   node_modules/
+   *.sqlite3
+   *.log
+   .vscode/
+   .idea/
