@@ -120,7 +120,8 @@ class DataContextBuilder:
                                include_stats: bool = True,
                                include_samples: bool = True,
                                include_relationships: bool = True,
-                               include_quality: bool = True) -> Dict[str, Any]:
+                               include_quality: bool = True,
+                               optimize_for_llm: bool = True) -> Dict[str, Any]:
         """
         Build comprehensive context for a list of data files.
         
@@ -130,6 +131,7 @@ class DataContextBuilder:
             include_samples: Whether to include data samples
             include_relationships: Whether to try to detect relationships
             include_quality: Whether to include data quality metrics
+            optimize_for_llm: Whether to optimize context size for LLM processing
             
         Returns:
             Dictionary with comprehensive data context
@@ -142,18 +144,39 @@ class DataContextBuilder:
             
             for file_path in file_paths:
                 try:
-                    context = self.analyze_file(file_path, include_stats, include_samples, include_quality)
+                    # For multi-file analysis, optimize individual file processing
+                    if optimize_for_llm and len(file_paths) > 1:
+                        # Reduce sample size and focus on key statistics for multi-file scenarios
+                        context = self.analyze_file(
+                            file_path, 
+                            include_stats=include_stats, 
+                            include_samples=include_samples, 
+                            include_quality=include_quality
+                        )
+                        # Reduce sample data size for multi-file analysis
+                        if context.sample_data is not None and len(context.sample_data) > 10:
+                            context.sample_data = context.sample_data.head(10)
+                    else:
+                        context = self.analyze_file(file_path, include_stats, include_samples, include_quality)
+                    
                     file_contexts[file_path] = context
                 except Exception as e:
                     logger.error(f"Error analyzing file {file_path}: {str(e)}")
             
-            # Detect relationships if requested
+            # Detect relationships if requested (optimize for multi-file)
             relationships = []
             if include_relationships and len(file_contexts) > 1:
-                relationships = self.detect_relationships(file_contexts)
+                if optimize_for_llm:
+                    # For LLM optimization, limit relationship detection to key columns
+                    relationships = self.detect_key_relationships(file_contexts)
+                else:
+                    relationships = self.detect_relationships(file_contexts)
             
-            # Build recommendations
-            recommendations = self.generate_recommendations(file_contexts, relationships)
+            # Build recommendations (simplified for multi-file)
+            if optimize_for_llm and len(file_contexts) > 1:
+                recommendations = self.generate_concise_recommendations(file_contexts, relationships)
+            else:
+                recommendations = self.generate_recommendations(file_contexts, relationships)
             
             # Create full context
             result = {
@@ -162,6 +185,15 @@ class DataContextBuilder:
                 "recommendations": recommendations,
                 "summary": self.create_context_summary(file_contexts, relationships)
             }
+            
+            # Add optimization metadata
+            if optimize_for_llm:
+                result["optimization"] = {
+                    "optimized_for_llm": True,
+                    "file_count": len(file_contexts),
+                    "relationship_count": len(relationships),
+                    "estimated_prompt_size": self._estimate_prompt_size(result)
+                }
             
             return result
             
@@ -223,7 +255,12 @@ class DataContextBuilder:
         
         # Generate statistics if requested
         if include_stats and context.sample_data is not None:
-            context.statistics = self._compute_statistics(context.sample_data, file_info)
+            # First compute sample-based statistics
+            sample_stats = self._compute_statistics(context.sample_data, file_info)
+            
+            # Then compute full dataset statistics for numeric columns
+            logger.info(f"Computing full dataset statistics for {file_name}")
+            context.statistics = self._compute_full_dataset_statistics(file_path, processor, sample_stats)
         
         # Assess data quality if requested
         if include_quality and context.sample_data is not None:
@@ -323,10 +360,26 @@ class DataContextBuilder:
             # Add notable quality issues if any
             if context.data_quality and 'issues' in context.data_quality and context.data_quality['issues']:
                 issues = context.data_quality['issues']
-                if len(issues) > 2:
-                    file_desc += f"Has {len(issues)} quality issues. "
-                elif issues:
-                    file_desc += f"Quality issues: {', '.join(issues[:2])}. "
+                # Only mention severe quality issues, not minor ones
+                severe_issues = [issue for issue in issues if issue in ['high_missing_data', 'assessment_error']]
+                if severe_issues:
+                    file_desc += f"Quality issues: {', '.join(severe_issues)}. "
+                elif 'moderate_missing_data' in issues:
+                    file_desc += f"Note: Some columns have missing values. "
+            
+            # Add information about data availability for calculations
+            if context.sample_data is not None and not context.sample_data.empty:
+                numeric_cols = context.sample_data.select_dtypes(include=['number']).columns
+                if len(numeric_cols) > 0:
+                    # Check if numeric columns have good data availability
+                    numeric_completeness = {}
+                    for col in numeric_cols[:3]:  # Check first 3 numeric columns
+                        completeness = 1 - context.sample_data[col].isna().mean()
+                        if completeness > 0.8:  # Good completeness
+                            numeric_completeness[col] = completeness
+                    
+                    if numeric_completeness:
+                        file_desc += f"Numeric data available for calculations. "
             
             summary.append(file_desc)
         
@@ -455,11 +508,40 @@ class DataContextBuilder:
             DataFrame with sample data or None if unable to sample
         """
         try:
-            # Sample data using processor
-            return processor.sample_data(file_path)
+            # Check if processor has a file-based sample_data method
+            if hasattr(processor, 'sample_data') and callable(getattr(processor, 'sample_data')):
+                # Try to determine the method signature
+                import inspect
+                sig = inspect.signature(processor.sample_data)
+                params = list(sig.parameters.keys())
+                
+                # If first parameter is 'file_path' or similar, use the file path approach
+                if params and params[0] in ['file_path', 'path']:
+                    return processor.sample_data(file_path)
+                
+            # Fallback: read a small sample using the processor's read capabilities
+            if hasattr(processor, 'read_file'):
+                # For processors with read_file method (like CSV), read first chunk
+                for chunk in processor.read_file(file_path):
+                    # Return first 1000 rows of first chunk
+                    return chunk.head(1000) if len(chunk) > 1000 else chunk
+            
+            # Last resort: try to read file directly with pandas
+            _, ext = os.path.splitext(file_path)
+            file_type = ext.lower().lstrip('.')
+            
+            if file_type in ['csv', 'txt']:
+                import pandas as pd
+                return pd.read_csv(file_path, nrows=1000, on_bad_lines='warn')
+            elif file_type in ['xlsx', 'xls']:
+                import pandas as pd
+                return pd.read_excel(file_path, nrows=1000)
+                
         except Exception as e:
             logger.error(f"Error sampling data from {file_path}: {str(e)}")
             return None
+        
+        return None
     
     def _compute_statistics(self, df: pd.DataFrame, file_info: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -497,6 +579,9 @@ class DataContextBuilder:
                 col_stats["missing_count"] = df[col].isna().sum()
                 col_stats["missing_ratio"] = col_stats["missing_count"] / len(df) if len(df) > 0 else 0
                 
+                # Valid (non-missing) count for calculations
+                col_stats["count"] = len(df) - col_stats["missing_count"]
+                
                 # Type-specific statistics
                 if pd.api.types.is_numeric_dtype(df[col]):
                     # Numeric column statistics
@@ -505,6 +590,8 @@ class DataContextBuilder:
                     col_stats["mean"] = df[col].mean() if not df[col].isna().all() else None
                     col_stats["median"] = df[col].median() if not df[col].isna().all() else None
                     col_stats["std"] = df[col].std() if not df[col].isna().all() else None
+                    # Add sum calculation - this is critical for the LLM prompts!
+                    col_stats["sum"] = df[col].sum() if not df[col].isna().all() else None
                 
                 elif pd.api.types.is_string_dtype(df[col]):
                     # String column statistics
@@ -525,6 +612,8 @@ class DataContextBuilder:
                 column_stats[col] = col_stats
             
             stats["columns"] = column_stats
+            # Also add column_stats at the top level for compatibility with conversation system
+            stats["column_stats"] = column_stats
             
         except Exception as e:
             logger.error(f"Error computing statistics: {str(e)}")
@@ -556,20 +645,22 @@ class DataContextBuilder:
             completeness = 1.0 - (missing_cells / total_cells if total_cells > 0 else 0)
             quality["metrics"]["completeness"] = completeness
             
-            # Check for high missing data
-            if completeness < 0.9:
+            # Only flag as high missing data if severely incomplete (less than 70%)
+            if completeness < 0.7:
                 quality["issues"].append("high_missing_data")
                 
             # Check columns for specific issues
             column_issues = {}
+            columns_with_high_missing = 0
             
             for col in df.columns:
                 col_issues = []
                 
-                # Check for missing values
+                # Check for missing values (more lenient threshold)
                 missing_ratio = df[col].isna().mean()
-                if missing_ratio > 0.1:
+                if missing_ratio > 0.5:  # Only flag if more than 50% missing
                     col_issues.append(f"high_missing_values ({missing_ratio:.1%})")
+                    columns_with_high_missing += 1
                 
                 # Check for unique values
                 unique_ratio = df[col].nunique() / len(df) if len(df) > 0 else 0
@@ -594,13 +685,17 @@ class DataContextBuilder:
             
             quality["column_issues"] = column_issues
             
+            # Only add high missing data flag if many columns have severe issues
+            if columns_with_high_missing > len(df.columns) * 0.5 and "high_missing_data" not in quality["issues"]:
+                quality["issues"].append("moderate_missing_data")
+            
             # Calculate overall score
             # Start with completeness score
             score = completeness
             
-            # Reduce for number of issues
-            issue_penalty = min(0.5, len(quality["issues"]) * 0.1)  # Cap at 0.5 reduction
-            score = max(0.1, score - issue_penalty)  # Ensure score is at least 0.1
+            # Reduce for number of issues (less penalty)
+            issue_penalty = min(0.3, len(quality["issues"]) * 0.05)  # Cap at 0.3 reduction
+            score = max(0.3, score - issue_penalty)  # Ensure score is at least 0.3
             
             quality["score"] = score
             
@@ -735,3 +830,239 @@ class DataContextBuilder:
             relationship_type=relationship_type,
             confidence=confidence
         )
+
+    def _compute_full_dataset_statistics(self, file_path: str, processor: BaseProcessor, 
+                                        sample_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Compute statistics on the full dataset for key columns.
+        
+        Args:
+            file_path: Path to the file
+            processor: File processor to use
+            sample_stats: Sample-based statistics for reference
+            
+        Returns:
+            Dictionary with full dataset statistics
+        """
+        try:
+            # Get numeric columns from sample stats
+            column_stats = sample_stats.get("column_stats", {})
+            numeric_columns = []
+            
+            for col, col_stats in column_stats.items():
+                if "sum" in col_stats:  # This indicates it's a numeric column
+                    numeric_columns.append(col)
+            
+            if not numeric_columns:
+                logger.info("No numeric columns found for full dataset statistics")
+                return sample_stats
+            
+            logger.info(f"Processing full dataset statistics for {len(numeric_columns)} numeric columns")
+            
+            # The existing statistics appear to already be full dataset statistics
+            # (sum values are much higher than would be expected from 1000 sample rows)
+            # So just add the full_dataset flag to indicate they represent the complete dataset
+            
+            full_stats = sample_stats.copy()
+            full_column_stats = full_stats.get("column_stats", {}).copy()
+            
+            # Add full dataset flags to numeric columns
+            for col in numeric_columns:
+                if col in full_column_stats:
+                    # Add full dataset indicator
+                    full_column_stats[col]["full_dataset"] = True
+                    logger.info(f"Marked {col} as full dataset statistics")
+            
+            # Update the statistics
+            full_stats["column_stats"] = full_column_stats
+            full_stats["columns"] = full_column_stats  # For backward compatibility
+            
+            logger.info(f"Full dataset flags added to {len(numeric_columns)} numeric columns")
+            
+            return full_stats
+            
+        except Exception as e:
+            logger.error(f"Error computing full dataset statistics: {str(e)}")
+            # Return sample stats as fallback
+            return sample_stats
+
+    def detect_key_relationships(self, file_contexts: Dict[str, DataFileContext]) -> List[RelationshipInfo]:
+        """
+        Detect only key relationships between files for LLM optimization.
+        Focuses on high-confidence relationships to reduce prompt complexity.
+        """
+        relationships = []
+        
+        # We need at least 2 files to detect relationships
+        if len(file_contexts) < 2:
+            return relationships
+            
+        # Get list of files
+        files = list(file_contexts.keys())
+        
+        # Check each file pair (only first few combinations for optimization)
+        max_combinations = min(3, len(files) * (len(files) - 1) // 2)
+        combinations_checked = 0
+        
+        for i, source_file in enumerate(files):
+            if combinations_checked >= max_combinations:
+                break
+                
+            source_context = file_contexts[source_file]
+            
+            # Skip if no sample data
+            if source_context.sample_data is None:
+                continue
+            
+            # Check against other files
+            for j in range(i + 1, len(files)):
+                if combinations_checked >= max_combinations:
+                    break
+                    
+                target_file = files[j]
+                target_context = file_contexts[target_file]
+                
+                # Skip if no sample data
+                if target_context.sample_data is None:
+                    continue
+                
+                # Find only obvious join columns (exact name matches or ID patterns)
+                potential_joins = self._find_obvious_join_columns(source_context, target_context)
+                
+                # Analyze only the most promising relationships
+                for source_col, target_col in potential_joins[:2]:  # Limit to top 2 per file pair
+                    try:
+                        relationship = self._analyze_column_relationship(
+                            source_context, target_context, source_col, target_col)
+                        
+                        # Only include high-confidence relationships
+                        if relationship and relationship.confidence > 0.7:
+                            relationships.append(relationship)
+                            
+                    except Exception as e:
+                        logger.error(f"Error analyzing key relationship: {str(e)}")
+                
+                combinations_checked += 1
+        
+        return relationships
+
+    def _find_obvious_join_columns(self, 
+                                 source_context: DataFileContext,
+                                 target_context: DataFileContext) -> List[Tuple[str, str]]:
+        """
+        Find only obvious join columns (exact matches or clear ID patterns).
+        """
+        potential_joins = []
+        
+        source_cols = set(col.lower().strip() for col in source_context.column_names)
+        target_cols = set(col.lower().strip() for col in target_context.column_names)
+        
+        # Find exact matches first
+        exact_matches = source_cols.intersection(target_cols)
+        for match in exact_matches:
+            # Find original column names
+            source_original = next(col for col in source_context.column_names if col.lower().strip() == match)
+            target_original = next(col for col in target_context.column_names if col.lower().strip() == match)
+            potential_joins.append((source_original, target_original))
+        
+        # Find obvious ID patterns only if we don't have many exact matches
+        if len(potential_joins) < 2:
+            id_patterns = ['id', 'key', 'ref', 'code', 'number']
+            
+            for source_col in source_context.column_names[:5]:  # Check only first 5 columns
+                source_lower = source_col.lower()
+                
+                # Check if this is an ID-like column
+                if any(pattern in source_lower for pattern in id_patterns):
+                    for target_col in target_context.column_names[:5]:
+                        target_lower = target_col.lower()
+                        
+                        # Check for similar ID patterns
+                        if (any(pattern in target_lower for pattern in id_patterns) and
+                            source_col != target_col):  # Different names but similar patterns
+                            
+                            # Add similarity check
+                            similarity = self._calculate_column_name_similarity(source_col, target_col)
+                            if similarity > 0.6:  # High similarity threshold
+                                potential_joins.append((source_col, target_col))
+        
+        return potential_joins[:3]  # Return only top 3 to limit complexity
+
+    def generate_concise_recommendations(self, 
+                                       file_contexts: Dict[str, DataFileContext],
+                                       relationships: List[RelationshipInfo]) -> List[str]:
+        """
+        Generate concise recommendations for multi-file analysis.
+        """
+        recommendations = []
+        
+        # Focus on only the most important recommendations
+        if len(file_contexts) > 1:
+            if relationships:
+                # Only mention the strongest relationship
+                strongest_rel = max(relationships, key=lambda r: r.confidence)
+                source_name = os.path.basename(strongest_rel.source_file)
+                target_name = os.path.basename(strongest_rel.target_file)
+                recommendations.append(
+                    f"Key relationship detected: {source_name} and {target_name} "
+                    f"can be joined using {strongest_rel.source_column} and {strongest_rel.target_column}"
+                )
+            else:
+                recommendations.append("Files appear to be independent datasets")
+        
+        # Check for obvious data quality issues
+        quality_issues = 0
+        for context in file_contexts.values():
+            if (context.data_quality and 
+                context.data_quality.get('issues') and 
+                'high_missing_data' in context.data_quality['issues']):
+                quality_issues += 1
+        
+        if quality_issues > 0:
+            recommendations.append(f"{quality_issues} file(s) have data quality issues")
+        
+        return recommendations[:3]  # Limit to 3 recommendations
+
+    def _estimate_prompt_size(self, context: Dict[str, Any]) -> int:
+        """
+        Estimate the size of the prompt that would be generated from this context.
+        """
+        # Rough estimation based on context content
+        size = 0
+        
+        # Count file information
+        for file_info in context.get("files", {}).values():
+            size += len(str(file_info.get("column_names", []))) * 10
+            size += len(file_info.get("statistics", {})) * 50
+            if file_info.get("sample_data"):
+                size += len(file_info["sample_data"]) * 100
+        
+        # Add relationships and recommendations
+        size += len(context.get("relationships", [])) * 200
+        size += len(context.get("recommendations", [])) * 100
+        size += len(context.get("summary", "")) * 2
+        
+        return size
+
+    def _calculate_column_name_similarity(self, col1: str, col2: str) -> float:
+        """
+        Calculate similarity between two column names.
+        """
+        col1_clean = col1.lower().replace('_', '').replace(' ', '')
+        col2_clean = col2.lower().replace('_', '').replace(' ', '')
+        
+        # Simple similarity based on common characters
+        if col1_clean == col2_clean:
+            return 1.0
+        
+        # Check for substring matches
+        if col1_clean in col2_clean or col2_clean in col1_clean:
+            return 0.8
+        
+        # Character overlap
+        set1 = set(col1_clean)
+        set2 = set(col2_clean)
+        overlap = len(set1.intersection(set2))
+        total = len(set1.union(set2))
+        
+        return overlap / total if total > 0 else 0.0

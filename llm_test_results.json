@@ -1,0 +1,72 @@
+{
+  "detailed_results": {
+    "claude-3.7-sonnet-reasoning-gemma3-12b": {
+      "model_name": "claude-3.7-sonnet-reasoning-gemma3-12b",
+      "test_scenarios": [
+        "ModelTestResult(model_name='claude-3.7-sonnet-reasoning-gemma3-12b', test_name='schema_inference', response_time_ms=30072.592735290527, response_quality_score=1.9600000000000002, response_text='Error: The model took too long to respond (>30s).', error=None, memory_usage_mb=0.5859375, token_count=9)",
+        "ModelTestResult(model_name='claude-3.7-sonnet-reasoning-gemma3-12b', test_name='column_mapping', response_time_ms=30071.178913116455, response_quality_score=1.9600000000000002, response_text='Error: The model took too long to respond (>30s).', error=None, memory_usage_mb=-0.00390625, token_count=9)",
+        "ModelTestResult(model_name='claude-3.7-sonnet-reasoning-gemma3-12b', test_name='relationship_detection', response_time_ms=30071.06614112854, response_quality_score=1.9600000000000002, response_text='Error: The model took too long to respond (>30s).', error=None, memory_usage_mb=0.015625, token_count=9)",
+        "ModelTestResult(model_name='claude-3.7-sonnet-reasoning-gemma3-12b', test_name='data_type_inference', response_time_ms=30056.320428848267, response_quality_score=1.9600000000000002, response_text='Error: The model took too long to respond (>30s).', error=None, memory_usage_mb=0.00390625, token_count=9)",
+        "ModelTestResult(model_name='claude-3.7-sonnet-reasoning-gemma3-12b', test_name='sql_generation', response_time_ms=30068.58229637146, response_quality_score=1.9600000000000002, response_text='Error: The model took too long to respond (>30s).', error=None, memory_usage_mb=0.01171875, token_count=9)",
+        "ModelTestResult(model_name='claude-3.7-sonnet-reasoning-gemma3-12b', test_name='complex_reasoning', response_time_ms=30094.595193862915, response_quality_score=1.9600000000000002, response_text='Error: The model took too long to respond (>30s).', error=None, memory_usage_mb=0.01171875, token_count=9)"
+      ],
+      "total_response_time_ms": 180434.33570861816,
+      "average_quality_score": 1.9600000000000002,
+      "error_count": 0,
+      "success_rate": 100.0
+    },
+    "codellama-34b-instruct@q3_k_m": {
+      "model_name": "codellama-34b-instruct@q3_k_m",
+      "test_scenarios": [
+        "ModelTestResult(model_name='codellama-34b-instruct@q3_k_m', test_name='schema_inference', response_time_ms=28053.725004196167, response_quality_score=83.33333333333334, response_text='  \\nTo create a unified database schema that can accommodate all the data, we need to first identify the relationships between the different tables and then design the tables accordingly.\\n\\nHere are the relationships that we can infer from the data:\\n\\n* Customers have multiple orders.\\n* Orders contain multiple products.\\n* Products have a category and supplier.\\n\\nBased on these relationships, we can create the following tables:\\n\\n**Customers**\\n\\n* id (primary key)\\n* name\\n* email\\n* phone\\n* registration_...', error=None, memory_usage_mb=0.0078125, token_count=218)",
+        "ModelTestResult(model_name='codellama-34b-instruct@q3_k_m', test_name='column_mapping', response_time_ms=7336.567401885986, response_quality_score=64.2, response_text='  \\nThe following is an example of how you can map the column names in file A to those in file B:\\n\\n| File A | File B |\\n| --- | --- |\\n| CustomerID | id |\\n| CustomerName | full_name |\\n| EmailAddress | email |\\n| PhoneNumber | phone |\\n\\nThis mapping would allow you to easily compare and combine data from both files, even though the column names are different.', error=None, memory_usage_mb=0.0, token_count=74)",
+        "ModelTestResult(model_name='codellama-34b-instruct@q3_k_m', test_name='relationship_detection', response_time_ms=4630.431413650513, response_quality_score=30.12, response_text='  \\nThe users dataset has a relationship with the departments dataset through the department ID.\\nThe departments dataset has a relationship with the projects dataset through the department ID.\\nTherefore, the users dataset can be related to the projects dataset indirectly through the departments dataset.', error=None, memory_usage_mb=0.00390625, token_count=44)",
+        "ModelTestResult(model_name='codellama-34b-instruct@q3_k_m', test_name='data_type_inference', response_time_ms=24744.362592697144, response_quality_score=82.0, response_text='  Based on the sample data you provided, here are some recommendations for SQL data types to use for each column:\\n\\n* Column A: `VARCHAR(5)` or `CHAR(5)` - This would be appropriate because the values in this column appear to be alphanumeric and have a consistent length of 5 characters.\\n* Column B: `DATE` - This would be appropriate because the values in this column are dates, and using the `DATE` data type will allow you to take advantage of date-specific functions and operators in SQL.\\n* Column...', error=None, memory_usage_mb=0.00390625, token_count=231)",
+        "ModelTestResult(model_name='codellama-34b-instruct@q3_k_m', test_name='sql_generation', response_time_ms=20928.269147872925, response_quality_score=82.0, response_text='  To create a SQL statement to create a table for storing customer orders with the specified columns, you can use the following syntax:\\n```\\nCREATE TABLE Orders (\\n    OrderID INT PRIMARY KEY,\\n    CustomerID INT NOT NULL,\\n    ProductName VARCHAR(50),\\n    Quantity INT,\\n    UnitPrice DECIMAL(10, 2),\\n    OrderDate DATE,\\n    TotalAmount AS (Quantity * UnitPrice)\\n);\\n```\\nThis creates a table called `Orders` with the following columns:\\n\\n* `OrderID`: an integer primary key for each order.\\n* `CustomerID`: ...', error=None, memory_usage_mb=0.0, token_count=169)",
+        "ModelTestResult(model_name='codellama-34b-instruct@q3_k_m', test_name='complex_reasoning', response_time_ms=33888.81325721741, response_quality_score=84.00000000000001, response_text='  To ensure the successful migration of data from Excel and CSV files to a PostgreSQL database, follow these steps:\\n\\nStep 1: Define data standards\\nBefore migrating data, define standardized data structures, naming conventions, and date formats for all customer and order data. This will help maintain consistency across regions and prevent duplicate customers.\\n\\nStep 2: Clean and validate source data\\nReview each Excel and CSV file to ensure it meets the defined standards. Remove any unnecessary or ...', error=None, memory_usage_mb=0.05078125, token_count=335)"
+      ],
+      "total_response_time_ms": 119582.16881752014,
+      "average_quality_score": 70.94222222222223,
+      "error_count": 0,
+      "success_rate": 100.0
+    }
+  },
+  "summary": {
+    "models_tested": 2,
+    "model_comparison": {
+      "claude-3.7-sonnet-reasoning-gemma3-12b": {
+        "average_response_time_ms": 30072.389284769695,
+        "average_quality_score": 1.9600000000000002,
+        "success_rate": 100.0,
+        "error_count": 0
+      },
+      "codellama-34b-instruct@q3_k_m": {
+        "average_response_time_ms": 19930.36146958669,
+        "average_quality_score": 70.94222222222223,
+        "success_rate": 100.0,
+        "error_count": 0
+      }
+    },
+    "performance_metrics": {}
+  },
+  "recommendation": {
+    "best_overall": "codellama-34b-instruct@q3_k_m",
+    "best_for_quality": "codellama-34b-instruct@q3_k_m",
+    "best_for_speed": "codellama-34b-instruct@q3_k_m",
+    "best_for_reliability": "claude-3.7-sonnet-reasoning-gemma3-12b",
+    "detailed_analysis": {
+      "claude-3.7-sonnet-reasoning-gemma3-12b": {
+        "overall_score": 30.784,
+        "strengths": [],
+        "weaknesses": [],
+        "suitability_for_data_migration": "low"
+      },
+      "codellama-34b-instruct@q3_k_m": {
+        "overall_score": 68.49450314209305,
+        "strengths": [],
+        "weaknesses": [],
+        "suitability_for_data_migration": "medium"
+      }
+    }
+  }
+}

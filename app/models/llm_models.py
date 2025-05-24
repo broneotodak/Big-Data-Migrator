@@ -35,6 +35,9 @@ class MessageResponse(BaseModel):
     conversation_id: str
     guidance: Optional[Dict[str, Any]] = None
     processing_time_ms: Optional[float] = None
+    smart_processing: Optional[bool] = None
+    processed_results: Optional[Dict[str, Any]] = None
+    llm_used: Optional[str] = None
 
 class GuidanceResponse(BaseModel):
     """Response containing guidance information"""

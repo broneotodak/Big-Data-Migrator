@@ -1,0 +1,2 @@
+# This file ensures the conversations directory is tracked by git
+# Conversation history will be stored here when the application is running 

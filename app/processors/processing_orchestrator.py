@@ -78,7 +78,7 @@ class ProcessingOrchestrator:
             show_progress: Whether to show progress bars
         """
         # Memory management
-        self.memory_monitor = MemoryMonitor(threshold_percent=max_memory_percent)
+        self.memory_monitor = MemoryMonitor(warning_threshold=max_memory_percent/100.0)
         self.resource_optimizer = ResourceOptimizer(
             memory_monitor=self.memory_monitor
         )
@@ -730,3 +730,253 @@ class ProcessingOrchestrator:
                 status_dict["stats"] = task.result["stats"]
                 
         return status_dict
+
+    async def process_file(self, filename: str, content: bytes) -> Dict[str, Any]:
+        """
+        Process a single file with its content.
+        
+        Args:
+            filename: Name of the file
+            content: File content as bytes
+            
+        Returns:
+            Processing result dictionary compatible with ProcessingResponse
+        """
+        import uuid
+        from datetime import datetime
+        
+        start_time = time.time()
+        job_id = f"job_{int(start_time)}_{uuid.uuid4().hex[:8]}"
+        created_at = datetime.now()
+        
+        try:
+            # Create temp directory if it doesn't exist
+            temp_dir = "temp"
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Save the file content to a temporary file
+            temp_file_path = os.path.join(temp_dir, filename)
+            with open(temp_file_path, 'wb') as f:
+                f.write(content)
+            
+            # Track memory usage for this operation
+            self.memory_monitor.start_tracking_step(f"process_file_{filename}")
+            
+            # Process the file using multi-file processor
+            result = self.multi_processor.process_file(temp_file_path)
+            
+            # End memory tracking
+            memory_stats = self.memory_monitor.end_tracking_step(f"process_file_{filename}")
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            processing_time_ms = processing_time * 1000
+            
+            # Extract relevant data from the result
+            rows_processed = result.get("stats", {}).get("total_rows_processed", 0)
+            memory_peak_mb = memory_stats.get("peak_mb", 0)
+            
+            # Prepare response compatible with ProcessingResponse model
+            response = {
+                "job_id": job_id,
+                "status": "completed",
+                "file_path": temp_file_path,
+                "output_path": None,  # No output file for this operation
+                "processing_time_ms": processing_time_ms,
+                "rows_processed": rows_processed,
+                "file_size_mb": len(content) / (1024 * 1024),
+                "memory_usage_peak_mb": memory_peak_mb,
+                "error_message": None,
+                "warnings": [],
+                "metadata": {
+                    "filename": filename,
+                    "file_extension": os.path.splitext(filename)[1].lower(),
+                    "processor_used": type(self.multi_processor).__name__,
+                    "data_info": result.get("data_info", {}),
+                    "statistics": result.get("statistics", {})
+                },
+                "created_at": created_at,
+                "completed_at": datetime.now()
+            }
+            
+            logger.info(f"Successfully processed file {filename} in {processing_time:.2f}s")
+            return response
+            
+        except Exception as e:
+            # End memory tracking if it was started
+            try:
+                self.memory_monitor.end_tracking_step(f"process_file_{filename}")
+            except:
+                pass
+            
+            error_msg = f"Error processing file {filename}: {str(e)}"
+            logger.error(error_msg)
+            
+            # Calculate processing time even for errors
+            processing_time_ms = (time.time() - start_time) * 1000
+            
+            return {
+                "job_id": job_id,
+                "status": "failed",
+                "file_path": None,
+                "output_path": None,
+                "processing_time_ms": processing_time_ms,
+                "rows_processed": 0,
+                "file_size_mb": len(content) / (1024 * 1024),
+                "memory_usage_peak_mb": 0,
+                "error_message": str(e),
+                "warnings": [],
+                "metadata": {
+                    "filename": filename,
+                    "error_details": error_msg
+                },
+                "created_at": created_at,
+                "completed_at": datetime.now()
+            }
+
+    async def process_request(self, request) -> Dict[str, Any]:
+        """
+        Process a ProcessingRequest from the API.
+        
+        Args:
+            request: ProcessingRequest object with processing parameters
+            
+        Returns:
+            Processing result dictionary compatible with ProcessingResponse
+        """
+        import uuid
+        from datetime import datetime
+        
+        start_time = time.time()
+        job_id = f"job_{int(start_time)}_{uuid.uuid4().hex[:8]}"
+        created_at = datetime.now()
+        
+        try:
+            # Validate that we have a file to process
+            if not request.file_path:
+                raise ValueError("No file path provided in the request")
+                
+            if not os.path.exists(request.file_path):
+                raise FileNotFoundError(f"File not found: {request.file_path}")
+            
+            # Track memory usage for this operation
+            self.memory_monitor.start_tracking_step(f"process_request_{job_id}")
+            
+            # Get file size
+            file_size_bytes = os.path.getsize(request.file_path)
+            file_size_mb = file_size_bytes / (1024 * 1024)
+            
+            # Process the file using multi-file processor
+            process_kwargs = {}
+            
+            # Add custom configuration if provided
+            if request.custom_config:
+                process_kwargs.update(request.custom_config)
+            
+            # Set output path based on request
+            if request.export_path:
+                os.makedirs(request.export_path, exist_ok=True)
+                output_filename = os.path.basename(request.file_path)
+                if request.output_format.value == "csv":
+                    output_filename = os.path.splitext(output_filename)[0] + ".csv"
+                elif request.output_format.value == "excel":
+                    output_filename = os.path.splitext(output_filename)[0] + ".xlsx"
+                elif request.output_format.value == "json":
+                    output_filename = os.path.splitext(output_filename)[0] + ".json"
+                
+                process_kwargs["output_path"] = os.path.join(request.export_path, output_filename)
+            
+            # Override chunk size if specified
+            if request.chunk_size:
+                process_kwargs["chunk_size"] = request.chunk_size
+            
+            # Set processing mode parameters
+            if request.processing_mode.value == "memory_optimized":
+                process_kwargs["memory_efficient"] = True
+                process_kwargs["use_chunking"] = True
+            elif request.processing_mode.value == "speed_optimized":
+                process_kwargs["memory_efficient"] = False
+                process_kwargs["parallel_processing"] = True
+            # balanced mode uses default settings
+            
+            # Process the file
+            result = self.multi_processor.process_file(request.file_path, **process_kwargs)
+            
+            # End memory tracking
+            memory_stats = self.memory_monitor.end_tracking_step(f"process_request_{job_id}")
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            processing_time_ms = processing_time * 1000
+            
+            # Extract relevant data from the result
+            rows_processed = result.get("stats", {}).get("total_rows_processed", 0)
+            memory_peak_mb = memory_stats.get("peak_mb", 0)
+            
+            # Handle different output formats
+            output_path = process_kwargs.get("output_path")
+            if request.output_format.value == "supabase":
+                # TODO: Implement Supabase export
+                logger.warning("Supabase export not yet implemented")
+                output_path = None
+            
+            # Prepare response compatible with ProcessingResponse model
+            response = {
+                "job_id": job_id,
+                "status": "completed",
+                "file_path": request.file_path,
+                "output_path": output_path,
+                "processing_time_ms": processing_time_ms,
+                "rows_processed": rows_processed,
+                "file_size_mb": file_size_mb,
+                "memory_usage_peak_mb": memory_peak_mb,
+                "error_message": None,
+                "warnings": [],
+                "metadata": {
+                    "processing_mode": request.processing_mode.value,
+                    "output_format": request.output_format.value,
+                    "chunk_size": request.chunk_size,
+                    "skip_validation": request.skip_validation,
+                    "supabase_table_name": request.supabase_table_name,
+                    "processor_used": type(self.multi_processor).__name__,
+                    "data_info": result.get("data_info", {}),
+                    "statistics": result.get("statistics", {})
+                },
+                "created_at": created_at,
+                "completed_at": datetime.now()
+            }
+            
+            logger.info(f"Successfully processed request for {request.file_path} in {processing_time:.2f}s")
+            return response
+            
+        except Exception as e:
+            # End memory tracking if it was started
+            try:
+                self.memory_monitor.end_tracking_step(f"process_request_{job_id}")
+            except:
+                pass
+            
+            error_msg = f"Error processing request for {request.file_path}: {str(e)}"
+            logger.error(error_msg)
+            
+            # Calculate processing time even for errors
+            processing_time_ms = (time.time() - start_time) * 1000
+            
+            return {
+                "job_id": job_id,
+                "status": "failed",
+                "file_path": request.file_path,
+                "output_path": None,
+                "processing_time_ms": processing_time_ms,
+                "rows_processed": 0,
+                "file_size_mb": 0,
+                "memory_usage_peak_mb": 0,
+                "error_message": str(e),
+                "warnings": [],
+                "metadata": {
+                    "processing_mode": request.processing_mode.value if hasattr(request, 'processing_mode') else "unknown",
+                    "error_details": error_msg
+                },
+                "created_at": created_at,
+                "completed_at": datetime.now()
+            }

@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     
     # Load environment variables from .env file
-    load_dotenv(os.path.join("config", ".env"))
+    load_dotenv(".env")  # Load from root directory, not config/.env
     
     # Get the Streamlit port
     port = args.port or os.getenv("STREAMLIT_PORT", "8501")

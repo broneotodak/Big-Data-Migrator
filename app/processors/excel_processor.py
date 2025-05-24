@@ -2,6 +2,7 @@
 Excel file processor with memory-efficient sheet-by-sheet processing.
 """
 import os
+import time
 import re
 from typing import Dict, Generator, List, Optional, Any, Union, Tuple
 
@@ -67,9 +68,13 @@ class ExcelProcessor(BaseProcessor):
             sheets_to_process = [self.sheet_name]
             
         # Determine optimal chunk size if not provided
-        chunk_size = self.chunk_size
+        chunk_size = self.get_optimal_chunk_size(file_path)
         if chunk_size is None:
-            chunk_size = self.file_calculator.calculate_optimal_chunk_size(file_path, file_type="excel")
+            chunk_size = 1000  # Default fallback for Excel
+            logger.info(f"Using default chunk size: {chunk_size} rows")
+        else:
+            # Convert MB to approximate rows (assuming ~200 bytes per row for Excel)
+            chunk_size = int(chunk_size * 1024 * 1024 / 200)
             logger.info(f"Auto-calculated chunk size: {chunk_size} rows")
             
         # Create a progress bar for sheets if showing progress
@@ -104,7 +109,18 @@ class ExcelProcessor(BaseProcessor):
                         df['_sheet_name'] = sheet_name
                         
                         # Optimize data types
-                        df = self.optimize_dtypes(df)
+                        try:
+                            # Use base class method to detect optimal types
+                            optimal_types = self.detect_data_type(df)
+                            # Apply the types
+                            for col, dtype in optimal_types.items():
+                                if col in df.columns:
+                                    try:
+                                        df[col] = df[col].astype(dtype)
+                                    except:
+                                        pass  # Skip if conversion fails
+                        except:
+                            pass  # Use original if optimization fails
                         
                         # Handle date columns
                         df = self._process_date_columns(df)
@@ -207,7 +223,18 @@ class ExcelProcessor(BaseProcessor):
                             df['_sheet_name'] = sheet_name
                             
                             # Optimize data types
-                            df = self.optimize_dtypes(df)
+                            try:
+                                # Use base class method to detect optimal types
+                                optimal_types = self.detect_data_type(df)
+                                # Apply the types
+                                for col, dtype in optimal_types.items():
+                                    if col in df.columns:
+                                        try:
+                                            df[col] = df[col].astype(dtype)
+                                        except:
+                                            pass  # Skip if conversion fails
+                            except:
+                                pass  # Use original if optimization fails
                             
                             # Handle date columns
                             df = self._process_date_columns(df)
@@ -232,7 +259,18 @@ class ExcelProcessor(BaseProcessor):
                         df['_sheet_name'] = sheet_name
                         
                         # Optimize data types
-                        df = self.optimize_dtypes(df)
+                        try:
+                            # Use base class method to detect optimal types
+                            optimal_types = self.detect_data_type(df)
+                            # Apply the types
+                            for col, dtype in optimal_types.items():
+                                if col in df.columns:
+                                    try:
+                                        df[col] = df[col].astype(dtype)
+                                    except:
+                                        pass  # Skip if conversion fails
+                        except:
+                            pass  # Use original if optimization fails
                         
                         # Handle date columns
                         df = self._process_date_columns(df)
@@ -360,7 +398,7 @@ class ExcelProcessor(BaseProcessor):
                 logger.warning(f"Could not sample columns: {str(e)}")
             
             # Estimate memory requirements
-            file_info["estimated_memory_mb"] = self.file_calculator.estimate_file_memory_usage(file_path, "excel")
+            file_info["estimated_memory_mb"] = self.estimate_memory_requirement(file_path)
             
             return file_info
             
@@ -427,3 +465,140 @@ class ExcelProcessor(BaseProcessor):
         except Exception as e:
             logger.error(f"Error extracting sheet names: {str(e)}")
             return []
+
+    def sample_data(self, file_path: str, sample_size: int = 1000) -> Optional[pd.DataFrame]:
+        """
+        Get a sample of data from an Excel file.
+        
+        Args:
+            file_path: Path to the Excel file
+            sample_size: Number of rows to sample
+            
+        Returns:
+            DataFrame with sample data or None if error
+        """
+        try:
+            # Get sheet names first
+            sheet_names = self.extract_sheet_names(file_path)
+            if not sheet_names:
+                return None
+            
+            # Use the first sheet for sampling
+            sheet_name = sheet_names[0]
+            
+            # Read a sample from the first sheet
+            sample_df = pd.read_excel(
+                file_path,
+                sheet_name=sheet_name,
+                nrows=sample_size,
+                header=self.header,
+                skiprows=self.skiprows,
+                usecols=self.usecols,
+                dtype=self.dtype
+            )
+            
+            # Add sheet name as metadata column
+            sample_df['_sheet_name'] = sheet_name
+            
+            # Handle date columns
+            sample_df = self._process_date_columns(sample_df)
+            
+            logger.debug(f"Sampled {len(sample_df)} rows from {os.path.basename(file_path)} (sheet: {sheet_name})")
+            return sample_df
+            
+        except Exception as e:
+            logger.error(f"Error sampling data from {file_path}: {str(e)}")
+            return None
+
+    def process_file(self, file_path: str, **kwargs) -> Dict[str, Any]:
+        """
+        Process an Excel file using the provided function or default processing.
+        This method implements the abstract method from BaseProcessor.
+        
+        Args:
+            file_path: Path to the Excel file to process
+            **kwargs: Additional processing parameters including:
+                - process_fn: Function to apply to each chunk
+                - output_path: Path to save processed output
+                
+        Returns:
+            Dictionary with processing results
+        """
+        start_time = time.time()
+        
+        try:
+            # Extract parameters
+            process_fn = kwargs.get('process_fn')
+            output_path = kwargs.get('output_path')
+            
+            # Initialize results
+            total_rows_processed = 0
+            processed_chunks = []
+            
+            # Track memory usage
+            self.memory_monitor.start_tracking_step(f"excel_processing_{os.path.basename(file_path)}")
+            
+            # Process file in chunks
+            for chunk in self.read_file(file_path):
+                chunk_rows = len(chunk)
+                
+                # Apply processing function if provided
+                if process_fn:
+                    try:
+                        chunk = process_fn(chunk)
+                    except Exception as e:
+                        logger.warning(f"Error applying process function to chunk: {str(e)}")
+                
+                processed_chunks.append(chunk)
+                total_rows_processed += chunk_rows
+                
+                # Update memory peak tracking
+                self.memory_monitor.update_step_peak(f"excel_processing_{os.path.basename(file_path)}")
+            
+            # Combine results if we have chunks to process
+            if processed_chunks:
+                combined_df = pd.concat(processed_chunks, ignore_index=True)
+                
+                # Save output if path provided
+                if output_path:
+                    # Determine output format based on extension
+                    if output_path.endswith('.xlsx'):
+                        combined_df.to_excel(output_path, index=False)
+                    else:
+                        combined_df.to_csv(output_path, index=False)
+                    logger.info(f"Saved processed Excel to {output_path}")
+            else:
+                combined_df = pd.DataFrame()
+            
+            # End memory tracking
+            memory_stats = self.memory_monitor.end_tracking_step(f"excel_processing_{os.path.basename(file_path)}")
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            
+            return {
+                "status": "completed",
+                "file_path": file_path,
+                "output_path": output_path,
+                "data": combined_df,
+                "stats": {
+                    "total_rows_processed": total_rows_processed,
+                    "total_chunks": len(processed_chunks),
+                    "processing_time": processing_time,
+                    "memory_peak": memory_stats.get("peak_mb", 0),
+                    "file_size_mb": os.path.getsize(file_path) / (1024 * 1024)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing Excel file {file_path}: {str(e)}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "file_path": file_path,
+                "stats": {
+                    "total_rows_processed": 0,
+                    "processing_time": time.time() - start_time,
+                    "memory_peak": 0
+                }
+            }

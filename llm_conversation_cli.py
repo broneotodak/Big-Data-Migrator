@@ -45,8 +45,8 @@ def main():
     
     # Initialize LLM conversation system
     llm_system = LLMConversationSystem(
-        local_llm_url=os.getenv("LOCAL_LLM_URL", "http://localhost:1234/v1"),
-        local_llm_model=args.model or os.getenv("LOCAL_LLM_MODEL", "CodeLlama-34B-Instruct"),
+        local_llm_url=os.getenv("LOCAL_LLM_URL", "http://127.0.0.1:1234/v1"),
+        local_llm_model=args.model or os.getenv("LOCAL_LLM_MODEL", "claude-3.7-sonnet-reasoning-gemma3-12b"),
         memory_monitor=memory_monitor,
         resource_optimizer=resource_optimizer,
         online_llm_config=online_llm_config,
@@ -54,7 +54,7 @@ def main():
     )
     
     # Check LLM connection
-    print(f"Connecting to {args.model or os.getenv('LOCAL_LLM_MODEL', 'CodeLlama-34B-Instruct')} at {os.getenv('LOCAL_LLM_URL', 'http://localhost:1234/v1')}...")
+    print(f"Connecting to {args.model or os.getenv('LOCAL_LLM_MODEL', 'claude-3.7-sonnet-reasoning-gemma3-12b')} at {os.getenv('LOCAL_LLM_URL', 'http://localhost:1234/v1')}...")
     llm_system.llm_client.check_connection()
     
     # Create a conversation

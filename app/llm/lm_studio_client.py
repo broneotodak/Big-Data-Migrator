@@ -29,8 +29,10 @@ class LMStudioClient:
     """
     
     def __init__(self, 
-                base_url: str = "http://localhost:1234/v1", 
-                model: str = "CodeLlama-34B-Instruct",
+                base_url: str = "http://127.0.0.1:1234/v1", 
+                model: str = "claude-3.7-sonnet-reasoning-gemma3-12b",
+                timeout: int = 300,  # Increased from 30 to 300 seconds for complex analysis
+                max_retries: int = 3,
                 max_tokens: int = 4096,
                 context_window: int = 8192,
                 memory_monitor: Optional[MemoryMonitor] = None):
@@ -40,12 +42,16 @@ class LMStudioClient:
         Args:
             base_url: Base URL for the LM Studio API
             model: Model identifier
+            timeout: Timeout for requests (default 300s for complex analysis)
+            max_retries: Maximum number of retries for requests
             max_tokens: Maximum response tokens
             context_window: Model's context window size
             memory_monitor: Memory monitor for tracking resource usage
         """
         self.base_url = base_url
         self.model = model
+        self.timeout = timeout
+        self.max_retries = max_retries
         self.max_tokens = max_tokens
         self.context_window = context_window
         self.memory_monitor = memory_monitor or MemoryMonitor()
@@ -58,7 +64,7 @@ class LMStudioClient:
             logger.warning("Could not load cl100k_base tokenizer. Using fallback token estimation.")
             self.tokenizer = None
         
-        logger.info(f"Initialized LMStudioClient for {model} with {context_window} token context window")
+        logger.info(f"Initialized LMStudioClient for {model} with {context_window} token context window and {timeout}s timeout")
     
     def count_tokens(self, text: str) -> int:
         """
@@ -101,7 +107,8 @@ class LMStudioClient:
                           temperature: float = 0.7,
                           max_tokens: Optional[int] = None,
                           stream: bool = False,
-                          callback: Optional[Callable[[str], None]] = None) -> Union[str, Generator[str, None, None]]:
+                          callback: Optional[Callable[[str], None]] = None,
+                          timeout: Optional[int] = None) -> Union[str, Generator[str, None, None]]:
         """
         Generate a completion from the model.
         
@@ -111,12 +118,16 @@ class LMStudioClient:
             max_tokens: Maximum tokens to generate
             stream: Whether to stream the response
             callback: Function to call with each chunk when streaming
+            timeout: Timeout for the request in seconds
             
         Returns:
             Generated text or a generator yielding chunks
         """
         # Track memory usage
         self.memory_monitor.start_tracking_step("llm_generation")
+        
+        # Use provided timeout or default
+        request_timeout = timeout if timeout is not None else self.timeout
         
         # Count tokens to ensure we don't exceed context window
         prompt_tokens = self.count_tokens(prompt)
@@ -147,30 +158,42 @@ class LMStudioClient:
         # Execute the request
         try:
             if stream:
-                return self._stream_completion(payload, headers, callback)
+                return self._stream_completion(payload, headers, callback, request_timeout)
             else:
-                return self._standard_completion(payload, headers)
+                return self._standard_completion(payload, headers, request_timeout)
         finally:
             # End memory tracking
             self.memory_monitor.end_tracking_step("llm_generation")
     
-    def _standard_completion(self, payload: Dict[str, Any], headers: Dict[str, str]) -> str:
+    def _standard_completion(self, payload: Dict[str, Any], headers: Dict[str, str], timeout: int = 300) -> str:
         """
         Generate a completion without streaming.
         
         Args:
             payload: Request payload
             headers: Request headers
+            timeout: Request timeout in seconds (default 300s for complex analysis)
             
         Returns:
             Generated text
         """
+        # Check available memory and adjust timeout if needed
+        memory_report = self.memory_monitor.get_memory_report()
+        available_memory_mb = memory_report.get("available_mb", 0)
+        
+        # For complex analysis with large datasets, allow longer processing if memory permits
+        if available_memory_mb > 8000:  # If more than 8GB available
+            timeout = max(timeout, 600)  # Allow up to 10 minutes
+            logger.info(f"High memory available ({available_memory_mb:.1f}MB), extending timeout to {timeout}s")
+        elif available_memory_mb > 4000:  # If more than 4GB available
+            timeout = max(timeout, 450)  # Allow up to 7.5 minutes
+        
         try:
             response = requests.post(
                 f"{self.base_url}/completions",
                 headers=headers,
                 json=payload,
-                timeout=60  # Long timeout for potentially large responses
+                timeout=timeout
             )
             
             if response.status_code == 200:
@@ -184,8 +207,8 @@ class LMStudioClient:
                 return f"Error: {error_msg}"
                 
         except requests.exceptions.Timeout:
-            logger.error("Request to LM Studio timed out")
-            return "Error: The model took too long to respond."
+            logger.error(f"Request to LM Studio timed out after {timeout} seconds")
+            return f"Error: Complex analysis took too long (>{timeout}s). Try breaking down the request or check if more memory is available."
             
         except Exception as e:
             logger.error(f"Error generating completion: {str(e)}")
@@ -194,7 +217,8 @@ class LMStudioClient:
     def _stream_completion(self, 
                           payload: Dict[str, Any], 
                           headers: Dict[str, str],
-                          callback: Optional[Callable[[str], None]] = None) -> Generator[str, None, None]:
+                          callback: Optional[Callable[[str], None]] = None,
+                          timeout: int = 300) -> Generator[str, None, None]:
         """
         Stream a completion from the model.
         
@@ -202,17 +226,29 @@ class LMStudioClient:
             payload: Request payload
             headers: Request headers
             callback: Function to call with each chunk
+            timeout: Request timeout in seconds (default 300s for complex analysis)
             
         Yields:
             Chunks of generated text
         """
+        # Check available memory and adjust timeout if needed
+        memory_report = self.memory_monitor.get_memory_report()
+        available_memory_mb = memory_report.get("available_mb", 0)
+        
+        # For complex analysis with large datasets, allow longer processing if memory permits
+        if available_memory_mb > 8000:  # If more than 8GB available
+            timeout = max(timeout, 600)  # Allow up to 10 minutes
+            logger.info(f"High memory available ({available_memory_mb:.1f}MB), extending streaming timeout to {timeout}s")
+        elif available_memory_mb > 4000:  # If more than 4GB available
+            timeout = max(timeout, 450)  # Allow up to 7.5 minutes
+        
         try:
             response = requests.post(
                 f"{self.base_url}/completions",
                 headers=headers,
                 json=payload,
                 stream=True,
-                timeout=60
+                timeout=timeout
             )
             
             if response.status_code != 200:
@@ -248,8 +284,8 @@ class LMStudioClient:
                         continue
                         
         except requests.exceptions.Timeout:
-            logger.error("Streaming request to LM Studio timed out")
-            yield "Error: The model took too long to respond."
+            logger.error(f"Streaming request to LM Studio timed out after {timeout} seconds")
+            yield f"Error: Complex analysis took too long (>{timeout}s). Try breaking down the request or check if more memory is available."
             
         except Exception as e:
             logger.error(f"Error streaming completion: {str(e)}")
@@ -260,7 +296,8 @@ class LMStudioClient:
                       temperature: float = 0.7,
                       max_tokens: Optional[int] = None,
                       stream: bool = False,
-                      callback: Optional[Callable[[str], None]] = None) -> Union[str, Generator[str, None, None]]:
+                      callback: Optional[Callable[[str], None]] = None,
+                      timeout: Optional[int] = None) -> Union[str, Generator[str, None, None]]:
         """
         Generate a chat completion using the provided messages.
         
@@ -270,6 +307,7 @@ class LMStudioClient:
             max_tokens: Maximum tokens to generate
             stream: Whether to stream the response
             callback: Function to call with each chunk when streaming
+            timeout: Timeout for the request in seconds
             
         Returns:
             Generated text or a generator yielding chunks
@@ -283,7 +321,8 @@ class LMStudioClient:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=stream,
-            callback=callback
+            callback=callback,
+            timeout=timeout
         )
     
     def _convert_messages_to_prompt(self, messages: List[Dict[str, str]]) -> str:

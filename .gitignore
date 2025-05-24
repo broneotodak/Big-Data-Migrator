@@ -1,10 +1,334 @@
-   __pycache__/
-   *.pyc
-   .env
-   .supabase/
-   temp/
-   node_modules/
-   *.sqlite3
-   *.log
-   .vscode/
-   .idea/
+# Big Data Migrator - .gitignore
+
+# ===========================
+# Environment & Configuration
+# ===========================
+.env
+.env.local
+.env.production
+config.json
+config_multi_llm.env
+
+# API Keys and Secrets
+*.key
+*.pem
+secrets/
+credentials/
+
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ===========================
+# Data Files
+# ===========================
+# Large data files
+*.csv
+!temp/MMSDO_P_202412_EP810177.csv
+!temp/Payments*.csv
+uploads/*
+!uploads/.gitkeep
+
+# Processed files
+exports/*
+!exports/.gitkeep
+temp/processed/
+temp/cached/
+
+# Conversation history (optional - keep for demo)
+conversations/*
+!conversations/.gitkeep
+
+# ===========================
+# Logs & Monitoring
+# ===========================
+logs/
+*.log
+log_*.txt
+
+# ===========================
+# Jupyter Notebooks
+# ===========================
+.ipynb_checkpoints
+*.ipynb
+
+# ===========================
+# IDEs & Editors
+# ===========================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.swp
+*.swo
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*~
+.*.swp
+.*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ===========================
+# Operating System
+# ===========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+
+# ===========================
+# Database
+# ===========================
+*.db
+*.sqlite
+*.sqlite3
+database/
+db_backups/
+
+# ===========================
+# Backup & Temporary Files
+# ===========================
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+tmp/
+temp_backup/
+.backup/
+
+# ===========================
+# LLM & AI Model Files
+# ===========================
+models/
+*.bin
+*.ggml
+*.gguf
+model_cache/
+vectorstore/
+embeddings/
+
+# ===========================
+# Docker & Containers
+# ===========================
+Dockerfile.local
+docker-compose.override.yml
+.dockerignore
+
+# ===========================
+# Cloud & Deployment
+# ===========================
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Kubernetes
+*.kubeconfig
+
+# ===========================
+# Memory & Performance
+# ===========================
+core
+*.dump
+*.profile
+.memory_profiler
+
+# ===========================
+# Testing
+# ===========================
+.coverage
+.pytest_cache/
+test_reports/
+test_data/large_files/
+
+# ===========================
+# Documentation Build
+# ===========================
+docs/_build/
+docs/build/
+site/
+
+# ===========================
+# Package Managers
+# ===========================
+# Node.js (if used for frontend tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ===========================
+# Streamlit
+# ===========================
+.streamlit/
+streamlit_app.log
+
+# ===========================
+# FastAPI
+# ===========================
+.fastapi/
+
+# ===========================
+# Custom Application Files
+# ===========================
+# Large processed datasets
+processed_data/
+cache/
+.cache/
+
+# User-uploaded files (keep structure only)
+user_uploads/
+user_data/
+
+# Session data
+sessions/
+.sessions/
+
+# Debug files created during development
+debug_*.py
+test_*.csv
+sample_*.json
+debug_output/
+
+# ===========================
+# Git
+# ===========================
+*.orig
+*.rej
+
+# ===========================
+# Archive Files
+# ===========================
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# ===========================
+# Keep Essential Empty Directories
+# ===========================
+!conversations/.gitkeep
+!uploads/.gitkeep
+!exports/.gitkeep
+!logs/.gitkeep
+!temp/.gitkeep
+
+# ===========================
+# Custom Rules for This Project
+# ===========================
+# Keep sample files for testing
+!temp/MMSDO_P_202412_EP810177.csv
+!temp/Payments\ by\ order\ -\ 2024-12-01\ -\ 2024-12-31.csv
+
+# Exclude large test files
+test_large_*.csv
+benchmark_*.csv
+
+# Exclude user-specific test scripts
+my_test_*.py
+personal_*.py
+
+# Exclude configuration for specific deployments
+config_production.env
+config_staging.env

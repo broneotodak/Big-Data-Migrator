@@ -64,22 +64,35 @@ class MemoryMonitor:
         
         Returns:
             Tuple containing:
-            - Current memory usage in MB
-            - Percentage of total system RAM in use by this process
+            - Current system memory usage in MB
+            - Percentage of total system RAM in use
             - Total available system RAM in MB
         """
         # Get system memory info
         system_memory = psutil.virtual_memory()
         total_ram_mb = system_memory.total / (1024 * 1024)
         
-        # Get current process memory usage
-        current_usage_mb = self._process.memory_info().rss / (1024 * 1024)
-        usage_percent = current_usage_mb / total_ram_mb
+        # Get system-wide memory usage (not just our process)
+        used_ram_mb = system_memory.used / (1024 * 1024)
+        usage_percent = system_memory.percent / 100  # psutil returns percentage, convert to decimal
         
-        # Record in history
-        self._memory_usage_history.append((time.time(), current_usage_mb))
+        # Get current process memory usage for internal tracking
+        process_usage_mb = self._process.memory_info().rss / (1024 * 1024)
         
-        return current_usage_mb, usage_percent, total_ram_mb
+        # Record process usage in history (for process-specific tracking)
+        self._memory_usage_history.append((time.time(), process_usage_mb))
+        
+        # Return system-wide usage for main metrics
+        return used_ram_mb, usage_percent, total_ram_mb
+    
+    def current_time_ms(self) -> int:
+        """
+        Get current time in milliseconds.
+        
+        Returns:
+            Current timestamp in milliseconds
+        """
+        return int(time.time() * 1000)
     
     def get_max_safe_file_size(self, file_type: str = "csv") -> float:
         """
@@ -223,16 +236,50 @@ class MemoryMonitor:
         """
         current_mb, usage_percent, total_ram_mb = self.get_memory_usage()
         
+        # Get process-specific memory for additional tracking
+        process_usage_mb = self._process.memory_info().rss / (1024 * 1024)
+        
         report = {
-            "current_usage_mb": current_mb,
-            "usage_percent": usage_percent * 100,
+            "current_usage_mb": current_mb,  # System-wide used memory
+            "usage_percent": usage_percent * 100,  # System-wide usage percentage
             "total_ram_mb": total_ram_mb,
-            "available_mb": total_ram_mb * (1 - usage_percent),
+            "available_mb": total_ram_mb * (1 - usage_percent),  # System-wide available memory
+            "process_memory_mb": process_usage_mb,  # Our process memory usage
             "step_memory": self._step_memory_usage,
             "history": self._memory_usage_history[-50:] if self._memory_usage_history else []
         }
         
         return report
+    
+    def get_available_memory_mb(self) -> float:
+        """
+        Get available memory in MB.
+        
+        Returns:
+            Available memory in MB
+        """
+        _, usage_percent, total_ram_mb = self.get_memory_usage()
+        available_mb = total_ram_mb * (1 - usage_percent)
+        return available_mb
+    
+    def get_peak_memory_usage(self) -> float:
+        """
+        Get peak memory usage from all tracked steps.
+        
+        Returns:
+            Peak memory usage in MB
+        """
+        peak_mb = 0
+        for step_data in self._step_memory_usage.values():
+            if "peak" in step_data:
+                peak_mb = max(peak_mb, step_data["peak"])
+        
+        # If no steps tracked, return current usage
+        if peak_mb == 0:
+            current_mb, _, _ = self.get_memory_usage()
+            peak_mb = current_mb
+            
+        return peak_mb
     
     def _monitor_memory(self) -> None:
         """Background thread function for continuous memory monitoring"""

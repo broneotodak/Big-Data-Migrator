@@ -13,16 +13,90 @@ import time
 from typing import Dict, List, Optional, Any, Tuple, Union
 import plotly.express as px
 import plotly.graph_objects as go
-from app.frontend.chat_interface import ChatInterface
-from app.frontend.data_visualizations import (
-    create_data_quality_chart,
-    create_correlations_chart,
-    create_distribution_plots,
-    create_anomaly_detection_chart,
-    create_data_comparison_chart,
-    create_data_profile_summary
-)
 
+# Simplified imports to avoid circular dependencies
+try:
+    from chat_interface import ChatInterface
+except ImportError:
+    # Create a fallback if needed
+    class ChatInterface:
+        def __init__(self, api_url=None):
+            self.api_url = api_url
+
+# Fallback visualization functions
+def create_data_quality_chart(df):
+    """Create a simple data quality chart."""
+    missing_data = df.isnull().sum()
+    if missing_data.sum() > 0:
+        fig = px.bar(x=missing_data.index, y=missing_data.values, 
+                     title="Missing Values by Column")
+        return fig
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No missing values found - 100% complete!", 
+                          xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+        return fig
+
+def create_correlations_chart(df, threshold=0.3):
+    """Create a simple correlation chart."""
+    numeric_cols = df.select_dtypes(include=['number']).columns
+    if len(numeric_cols) > 1:
+        corr_matrix = df[numeric_cols].corr()
+        fig = px.imshow(corr_matrix, text_auto=True, title="Correlation Matrix")
+        return fig
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="Not enough numeric columns for correlation", 
+                          xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+        return fig
+
+def create_distribution_plots(df, columns):
+    """Create simple distribution plots."""
+    plots = {}
+    for col in columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            fig = px.histogram(df, x=col, title=f"Distribution of {col}")
+        else:
+            value_counts = df[col].value_counts().head(10)
+            fig = px.bar(x=value_counts.index, y=value_counts.values, 
+                        title=f"Top 10 Values in {col}")
+        plots[col] = fig
+    return plots
+
+def create_anomaly_detection_chart(df, column):
+    """Create a simple anomaly detection chart."""
+    if pd.api.types.is_numeric_dtype(df[column]):
+        fig = px.box(df, y=column, title=f"Outlier Detection for {column}")
+        return fig
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="Anomaly detection only available for numeric columns", 
+                          xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+        return fig
+
+def create_data_comparison_chart(df1, df2, column):
+    """Create a simple data comparison chart."""
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=df1[column], name="Dataset 1", opacity=0.7))
+    fig.add_trace(go.Histogram(x=df2[column], name="Dataset 2", opacity=0.7))
+    fig.update_layout(title=f"Comparison of {column}", barmode='overlay')
+    return fig
+
+def create_data_profile_summary(df):
+    """Create a simple data profile summary."""
+    profile = {
+        "row_count": len(df),
+        "column_count": len(df.columns),
+        "memory_usage": df.memory_usage(deep=True).sum() / 1024 / 1024,  # MB
+        "missing_values_pct": (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100,
+        "duplicate_rows_pct": (df.duplicated().sum() / len(df)) * 100,
+        "column_types": df.dtypes.value_counts().to_dict()
+    }
+    
+    # Convert numpy dtypes to strings for JSON serialization
+    profile["column_types"] = {str(k): v for k, v in profile["column_types"].items()}
+    
+    return profile
 
 class DataExplorationChat(ChatInterface):
     """
@@ -123,7 +197,35 @@ class DataExplorationChat(ChatInterface):
                         "Null": df.isna().sum()
                     })
                     st.dataframe(col_info)
-      def _render_visualization_tools(self):
+    
+    def _render_file_upload(self):
+        """Render simple file upload interface."""
+        st.info("Upload data files to start exploring")
+        uploaded_files = st.file_uploader(
+            "Upload data files",
+            accept_multiple_files=True,
+            type=["csv", "xlsx", "xls", "json", "pdf", "docx", "txt"]
+        )
+        
+        if uploaded_files:
+            # Simple file processing
+            for uploaded_file in uploaded_files:
+                try:
+                    if uploaded_file.name.endswith(".csv"):
+                        df = pd.read_csv(uploaded_file, nrows=1000)
+                    elif uploaded_file.name.endswith((".xlsx", ".xls")):
+                        df = pd.read_excel(uploaded_file, nrows=1000)
+                    elif uploaded_file.name.endswith(".json"):
+                        df = pd.read_json(uploaded_file, nrows=1000)
+                    else:
+                        df = pd.DataFrame({"Info": [f"File type: {uploaded_file.type}"]})
+                    
+                    st.session_state.data_preview[uploaded_file.name] = df
+                    st.success(f"✅ Loaded {uploaded_file.name}")
+                except Exception as e:
+                    st.error(f"Error loading {uploaded_file.name}: {str(e)}")
+    
+    def _render_visualization_tools(self):
         """Render data visualization tools."""
         if not st.session_state.active_exploration:
             return

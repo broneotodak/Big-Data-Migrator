@@ -3,6 +3,7 @@ PDF file processor with memory optimization using PyPDF2/pdfplumber.
 """
 import os
 import io
+import time
 import tempfile
 from typing import Dict, Generator, List, Optional, Any, Union, Tuple
 
@@ -102,7 +103,18 @@ class PDFProcessor(BaseProcessor):
                                 df['table_num'] = i + 1
                                 
                                 # Optimize data types
-                                df = self.optimize_dtypes(df)
+                                try:
+                                    # Use base class method to detect optimal types
+                                    optimal_types = self.detect_data_type(df)
+                                    # Apply the types
+                                    for col, dtype in optimal_types.items():
+                                        if col in df.columns:
+                                            try:
+                                                df[col] = df[col].astype(dtype)
+                                            except:
+                                                pass  # Skip if conversion fails
+                                except:
+                                    pass  # Use original if optimization fails
                                 
                                 yield df
                     
@@ -197,7 +209,7 @@ class PDFProcessor(BaseProcessor):
                                 file_info["has_text"] = False
             
             # Estimate memory requirements
-            file_info["estimated_memory_mb"] = self.file_calculator.estimate_file_memory_usage(file_path, "pdf")
+            file_info["estimated_memory_mb"] = self.estimate_memory_requirement(file_path)
             
             return file_info
             
@@ -349,3 +361,92 @@ class PDFProcessor(BaseProcessor):
         most_cols_have_headers = sum(column_headers) > len(column_headers) * 0.6  # At least 60% of columns
         
         return (first_row_all_strings and (shorter_content or most_cols_have_headers))
+
+    def process_file(self, file_path: str, **kwargs) -> Dict[str, Any]:
+        """
+        Process a PDF file using the provided function or default processing.
+        This method implements the abstract method from BaseProcessor.
+        
+        Args:
+            file_path: Path to the PDF file to process
+            **kwargs: Additional processing parameters including:
+                - process_fn: Function to apply to each chunk
+                - output_path: Path to save processed output
+                
+        Returns:
+            Dictionary with processing results
+        """
+        start_time = time.time()
+        
+        try:
+            # Extract parameters
+            process_fn = kwargs.get('process_fn')
+            output_path = kwargs.get('output_path')
+            
+            # Initialize results
+            total_rows_processed = 0
+            processed_chunks = []
+            
+            # Track memory usage
+            self.memory_monitor.start_tracking_step(f"pdf_processing_{os.path.basename(file_path)}")
+            
+            # Process file in chunks
+            for chunk in self.read_file(file_path):
+                chunk_rows = len(chunk)
+                
+                # Apply processing function if provided
+                if process_fn:
+                    try:
+                        chunk = process_fn(chunk)
+                    except Exception as e:
+                        logger.warning(f"Error applying process function to chunk: {str(e)}")
+                
+                processed_chunks.append(chunk)
+                total_rows_processed += chunk_rows
+                
+                # Update memory peak tracking
+                self.memory_monitor.update_step_peak(f"pdf_processing_{os.path.basename(file_path)}")
+            
+            # Combine results if we have chunks to process
+            if processed_chunks:
+                combined_df = pd.concat(processed_chunks, ignore_index=True)
+                
+                # Save output if path provided
+                if output_path:
+                    combined_df.to_csv(output_path, index=False)
+                    logger.info(f"Saved processed PDF to {output_path}")
+            else:
+                combined_df = pd.DataFrame()
+            
+            # End memory tracking
+            memory_stats = self.memory_monitor.end_tracking_step(f"pdf_processing_{os.path.basename(file_path)}")
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            
+            return {
+                "status": "completed",
+                "file_path": file_path,
+                "output_path": output_path,
+                "data": combined_df,
+                "stats": {
+                    "total_rows_processed": total_rows_processed,
+                    "total_chunks": len(processed_chunks),
+                    "processing_time": processing_time,
+                    "memory_peak": memory_stats.get("peak_mb", 0),
+                    "file_size_mb": os.path.getsize(file_path) / (1024 * 1024)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing PDF file {file_path}: {str(e)}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "file_path": file_path,
+                "stats": {
+                    "total_rows_processed": 0,
+                    "processing_time": time.time() - start_time,
+                    "memory_peak": 0
+                }
+            }

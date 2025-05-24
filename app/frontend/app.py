@@ -15,15 +15,15 @@ import json
 import uuid
 
 # Import custom components
-from app.frontend.chat_interface import ChatInterface
-from app.frontend.data_exploration_chat import DataExplorationChat
-from app.frontend.conversation_persistence import ConversationPersistence
-from app.frontend.suggestion_engine import SmartSuggestionEngine
-from app.frontend.visualization import create_schema_diagram, create_relationship_diagram
-from app.frontend.onboarding import check_and_show_onboarding
+from chat_interface import ChatInterface
+from data_exploration_chat import DataExplorationChat
+from conversation_persistence import ConversationPersistence
+from suggestion_engine import SmartSuggestionEngine
+from visualization import create_schema_diagram, create_relationship_diagram
+from debug_monitor import show_debug_monitor, show_processing_details, show_memory_and_performance
 
 # Load environment variables
-load_dotenv(os.path.join("config", ".env"))
+load_dotenv(".env")  # Load from root directory, not config/.env
 
 # API URL configuration
 API_URL = f"http://{os.getenv('API_HOST', 'localhost')}:{os.getenv('API_PORT', '8000')}"
@@ -41,57 +41,137 @@ def main():
     st.title("Big Data Migrator")
     st.subheader("Process, analyze, and migrate large datasets efficiently")
     
-    # Check and show onboarding for first-time users
-    if check_and_show_onboarding():
-        return
-    
     with st.sidebar:
         st.header("Navigation")
+        
+        # Initialize page selection if not exists
+        if "page_selection" not in st.session_state:
+            st.session_state.page_selection = "Home"
+        
         page = st.radio(
             "Select a page:",
-            ["Home", "Upload & Process", "Memory Monitor", "Data Chat", "Data Explorer", "Database Migration", "About"],
+            ["Home", "Upload & Process", "Memory Monitor", "Data Chat", "Data Explorer", "Database Migration", "Debug", "About"],
+            index=["Home", "Upload & Process", "Memory Monitor", "Data Chat", "Data Explorer", "Database Migration", "Debug", "About"].index(st.session_state.page_selection) if st.session_state.page_selection in ["Home", "Upload & Process", "Memory Monitor", "Data Chat", "Data Explorer", "Database Migration", "Debug", "About"] else 0,
+            key="sidebar_nav"
         )
         
+        # Update session state when radio selection changes
+        if page != st.session_state.page_selection:
+            st.session_state.page_selection = page
+        
         st.header("System Status")
-        if st.button("Check API Status"):
-            try:
-                response = requests.get(f"{API_URL}/health")
-                if response.status_code == 200:
-                    st.success("API is online and healthy")
-                else:
-                    st.error(f"API returned status code {response.status_code}")
-            except Exception as e:
-                st.error(f"Failed to connect to API: {e}")        # Display memory status
+        
+        # API Status Check
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Check API", use_container_width=True):
+                try:
+                    response = requests.get(f"{API_URL}/health", timeout=3)
+                    if response.status_code == 200:
+                        st.success("✅ API Online")
+                    else:
+                        st.error(f"❌ API Error: {response.status_code}")
+                except Exception as e:
+                    st.error("❌ API Offline")
+        
+        with col2:
+            if st.button("🚀 Start API", use_container_width=True):
+                st.info("💡 Run: `python main.py`")
+        
+        # Memory status display with controlled auto-refresh
+        st.subheader("💾 Memory Status")
+        
+        # Initialize refresh state
+        if "last_refresh" not in st.session_state:
+            st.session_state.last_refresh = 0
+        
+        # Add refresh button and auto-refresh option
+        col1, col2 = st.columns(2)
+        with col1:
+            manual_refresh = st.button("🔄 Refresh", use_container_width=True)
+        with col2:
+            auto_refresh = st.checkbox("🔁 Auto", value=False)  # Default to false to prevent issues
+        
+        # Check if we should refresh (every 5 seconds if auto-refresh is on)
+        current_time = time.time()
+        should_refresh = (
+            manual_refresh or 
+            (auto_refresh and (current_time - st.session_state.last_refresh) > 5)
+        )
+        
+        if should_refresh:
+            st.session_state.last_refresh = current_time
+            if auto_refresh:
+                st.rerun()  # Only rerun if auto-refresh triggered the update
+        
         try:
-            response = requests.get(f"{API_URL}/memory-status")
+            response = requests.get(f"{API_URL}/memory-status", timeout=2)
             if response.status_code == 200:
                 memory_stats = response.json()
+                
+                # Display metrics in a clean format
+                usage_percent = memory_stats.get('memory_usage_percent', 0)
+                max_file_size = memory_stats.get('max_safe_file_size_mb', 0)
+                available_gb = memory_stats.get('available_memory_gb', 0)
+                
                 st.metric(
                     label="Memory Usage", 
-                    value=f"{memory_stats.get('percent_used', 0) * 100:.1f}%",
-                    delta=None
+                    value=f"{usage_percent:.1f}%",
+                    delta=f"Available: {available_gb:.1f} GB"
                 )
-                st.progress(memory_stats.get('percent_used', 0))
                 
-                max_file_size = memory_stats.get('max_safe_file_size_mb', 0)
-                st.info(f"Max safe file size: {max_file_size:.1f} MB")
+                # Progress bar with color coding
+                if usage_percent < 60:
+                    st.progress(usage_percent/100, text="🟢 Good")
+                elif usage_percent < 80:
+                    st.progress(usage_percent/100, text="🟡 Warning")
+                else:
+                    st.progress(usage_percent/100, text="🔴 High Usage")
+                
+                st.info(f"📁 Max safe file: {max_file_size:.1f} MB")
+                
+                # Show timestamp of last update
+                display_time = time.strftime("%H:%M:%S", time.localtime(st.session_state.last_refresh))
+                st.caption(f"Last updated: {display_time}")
+                
+            else:
+                st.warning("⚠️ Memory API unavailable")
         except Exception as e:
-            st.warning("Memory status unavailable")
+            st.warning("⚠️ Memory status offline")
+            # Show simple fallback system info
+            try:
+                import psutil
+                memory = psutil.virtual_memory()
+                st.metric("💾 System Memory", f"{memory.percent:.1f}%")
+                st.progress(memory.percent / 100)
+                st.caption("📊 System memory (install API for detailed monitoring)")
+            except ImportError:
+                # Simple static fallback without external dependencies
+                st.info("💡 **Start API for memory monitoring**")
+                st.code("python start_api.py", language="bash")
+                st.caption("📊 Memory details available when API is running")
+    
+    # Add debug monitor to sidebar
+    show_debug_monitor()
     
     # Page content
-    if page == "Home":
+    current_page = st.session_state.page_selection
+    
+    if current_page == "Home":
         render_home_page()
-    elif page == "Upload & Process":
+    elif current_page == "Upload & Process":
         render_upload_page()
-    elif page == "Memory Monitor":
+    elif current_page == "Memory Monitor":
         render_memory_page()
-    elif page == "Data Chat":
+    elif current_page == "Data Chat":
         render_chat_page()
-    elif page == "Data Explorer":
+    elif current_page == "Data Explorer":
         render_explorer_page()
-    elif page == "Database Migration":
+    elif current_page == "Database Migration":
         render_migration_page()
-    elif page == "About":
+    elif current_page == "Debug":
+        render_debug_page()
+    elif current_page == "About":
         render_about_page()
 
 
@@ -114,13 +194,19 @@ def render_home_page():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.info("💬 [Chat with Your Data](#data-chat)")
+        if st.button("💬 Chat with Your Data", use_container_width=True):
+            st.session_state.page_selection = "Data Chat"
+            st.rerun()
     
     with col2:
-        st.info("📊 [Explore Your Data](#data-explorer)")
+        if st.button("📊 Explore Your Data", use_container_width=True):
+            st.session_state.page_selection = "Data Explorer"
+            st.rerun()
     
     with col3:
-        st.info("📤 [Upload Files](#upload-process)")
+        if st.button("📤 Upload Files", use_container_width=True):
+            st.session_state.page_selection = "Upload & Process"
+            st.rerun()
 
 
 def render_upload_page():
@@ -161,18 +247,19 @@ def render_memory_page():
         if response.status_code == 200:
             memory_data = response.json()
             
-            # Display memory usage
-            available_mb = memory_data.get("available_memory", 0) / (1024 * 1024)
-            total_mb = memory_data.get("total_memory", 0) / (1024 * 1024)
-            usage_percent = memory_data.get("percent_used", 0) * 100
+            # Use correct field names from API response
+            available_gb = memory_data.get("available_memory_gb", 0)
+            total_gb = memory_data.get("total_memory_gb", 0)
+            used_gb = memory_data.get("used_memory_gb", 0)
+            usage_percent = memory_data.get("memory_usage_percent", 0)
             
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.metric("Available Memory", f"{available_mb:.2f} MB")
+                st.metric("Available Memory", f"{available_gb:.2f} GB")
             
             with col2:
-                st.metric("Total Memory", f"{total_mb:.2f} MB")
+                st.metric("Total Memory", f"{total_gb:.2f} GB")
             
             with col3:
                 st.metric("Memory Usage", f"{usage_percent:.1f}%")
@@ -289,6 +376,129 @@ def render_migration_page():
         st.info("No conversations found. Start a data chat to create migration plans.")
 
 
+def render_debug_page():
+    """Render the debug monitoring page."""
+    st.header("🔍 Debug Monitor")
+    st.write("Real-time system monitoring and debugging information.")
+    
+    # Create tabs for different debug views
+    tab1, tab2, tab3 = st.tabs(["💾 Performance", "🔄 Processing", "🧠 LLM Status"])
+    
+    with tab1:
+        show_memory_and_performance()
+    
+    with tab2:
+        st.subheader("Current Processing Tasks")
+        
+        try:
+            response = requests.get(f"{API_URL}/debug/current-processing", timeout=2)
+            if response.status_code == 200:
+                processing_info = response.json()
+                
+                if processing_info.get("active_processes"):
+                    st.success(f"🔄 {len(processing_info['active_processes'])} active processes")
+                    
+                    for process in processing_info["active_processes"]:
+                        with st.expander(f"📁 {process.get('task', 'Unknown Task')}"):
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.write(f"**Duration:** {process.get('duration_seconds', 0):.1f}s")
+                                st.write(f"**Progress:** {process.get('progress', 0)*100:.1f}%")
+                            
+                            with col2:
+                                if process.get('current_step'):
+                                    st.write(f"**Current Step:** {process['current_step']}")
+                                
+                                # Show progress bar
+                                progress = process.get('progress', 0)
+                                if progress > 0:
+                                    st.progress(progress)
+                else:
+                    st.info("✅ No active processing tasks")
+            else:
+                st.warning("⚠️ Cannot get processing status")
+                
+        except requests.exceptions.RequestException:
+            st.error("❌ Processing status API unavailable")
+        
+        # Recent Errors Section
+        st.subheader("Recent Errors")
+        
+        try:
+            response = requests.get(f"{API_URL}/debug/recent-errors", timeout=2)
+            if response.status_code == 200:
+                errors = response.json()
+                
+                if errors:
+                    for error in errors[-5:]:  # Show last 5 errors
+                        timestamp = error.get("timestamp", "Unknown")
+                        message = error.get("message", "Unknown error")
+                        error_type = error.get("type", "general")
+                        
+                        # Format timestamp
+                        try:
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            formatted_time = dt.strftime("%H:%M:%S")
+                        except:
+                            formatted_time = timestamp
+                        
+                        with st.expander(f"⚠️ {error_type.title()} Error - {formatted_time}"):
+                            st.error(message)
+                            
+                            if error.get("details"):
+                                st.json(error["details"])
+                else:
+                    st.success("✅ No recent errors")
+            
+        except requests.exceptions.RequestException:
+            st.warning("⚠️ Error log unavailable")
+    
+    with tab3:
+        st.subheader("LLM Provider Status")
+        
+        try:
+            response = requests.get(f"{API_URL}/llm/status", timeout=2)
+            if response.status_code == 200:
+                llm_status = response.json()
+                
+                # Display LM Studio status
+                if "lm_studio_connection" in llm_status:
+                    conn_status = llm_status["lm_studio_connection"]
+                    if "✅" in str(conn_status):
+                        st.success(f"**Local LLM (LM Studio):** {conn_status}")
+                    else:
+                        st.error(f"**Local LLM (LM Studio):** {conn_status}")
+                
+                # Display conversation system status
+                if "conversation_system" in llm_status:
+                    conv_status = llm_status["conversation_system"]
+                    if "✅" in str(conv_status):
+                        st.success(f"**Conversation System:** {conv_status}")
+                    else:
+                        st.error(f"**Conversation System:** {conv_status}")
+                
+                # Display configuration
+                st.subheader("Configuration")
+                config_info = {
+                    "Local LLM URL": llm_status.get("local_llm_url", "Unknown"),
+                    "Local LLM Model": llm_status.get("local_llm_model", "Unknown"),
+                    "Online Fallback": "✅ Enabled" if llm_status.get("enable_online_fallback") else "❌ Disabled"
+                }
+                
+                for key, value in config_info.items():
+                    st.write(f"**{key}:** {value}")
+            
+        except requests.exceptions.RequestException:
+            st.error("❌ LLM status API unavailable")
+        
+        # Conversation Details (if available)
+        if hasattr(st.session_state, 'current_conversation_id') and st.session_state.current_conversation_id:
+            st.subheader("Current Conversation Details")
+            show_processing_details(st.session_state.current_conversation_id)
+
+
 def render_about_page():
     """Render the about page."""
     st.header("About Big Data Migrator")
@@ -309,7 +519,7 @@ def render_about_page():
     
     - Python backend with FastAPI
     - Streamlit frontend
-    - Local LLM integration (CodeLlama-34B) with online fallback options
+    - Local LLM integration with online fallback options
     - Advanced data processing with pandas and dask
     - Memory monitoring and optimization
     """)

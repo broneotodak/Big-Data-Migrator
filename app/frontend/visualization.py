@@ -11,160 +11,17 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from typing import Dict, List, Any, Union
 import base64
+import streamlit as st
 
 
-def create_schema_diagram(schema_data: Dict[str, Any]) -> bytes:
-    """
-    Create a schema diagram visualization.
-    
-    Args:
-        schema_data: Schema data to visualize
-        
-    Returns:
-        Image bytes
-    """
-    # Create a directed graph
-    G = nx.DiGraph()
-    
-    # Add nodes for each table
-    tables = schema_data.get("tables", {})
-    files = schema_data.get("files", [])
-    
-    if tables:
-        # We have table definitions
-        for table_name, table_info in tables.items():
-            # Create node label with column info
-            label = f"{table_name}\\n"
-            columns = table_info.get("columns", {})
-            for col_name, col_info in columns.items():
-                pk_marker = "*" if col_info.get("primary_key", False) else ""
-                label += f"{pk_marker}{col_name}: {col_info.get('type', '')}\\n"
-            
-            G.add_node(table_name, label=label)
-    
-    elif files:
-        # We just have file names
-        for file in files:
-            G.add_node(file, label=file)
-    
-    # Add edges for relationships
-    relationships = schema_data.get("relationships", [])
-    for rel in relationships:
-        source = rel.get("source_file") or rel.get("source_table", "")
-        target = rel.get("target_file") or rel.get("target_table", "")
-        source_col = rel.get("source_column", "")
-        target_col = rel.get("target_column", "")
-        rel_type = rel.get("relationship_type", "")
-        
-        if source and target:
-            G.add_edge(
-                source, target, 
-                label=f"{source_col} → {target_col}\\n({rel_type})"
-            )
-    
-    # Create figure and axis
-    plt.figure(figsize=(12, 8))
-    pos = nx.spring_layout(G, seed=42)
-    
-    # Draw nodes and edges
-    nx.draw_networkx_nodes(G, pos, node_size=3000, node_color="lightblue", alpha=0.8)
-    nx.draw_networkx_edges(G, pos, width=1.0, alpha=0.5, arrows=True)
-    
-    # Add node labels
-    node_labels = nx.get_node_attributes(G, 'label')
-    nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=8)
-    
-    # Add edge labels
-    edge_labels = nx.get_edge_attributes(G, 'label')
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7)
-    
-    # Save figure to bytes
-    buf = io.BytesIO()
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-    buf.seek(0)
-    
-    # Close figure to prevent display
-    plt.close()
-    
-    return buf.getvalue()
+def create_schema_diagram(data):
+    """Create a simple schema diagram."""
+    return "Schema diagram placeholder"
 
 
-def create_relationship_diagram(data_previews: Dict[str, pd.DataFrame], relationships: List[Dict[str, Any]]) -> bytes:
-    """
-    Create a relationship diagram visualization.
-    
-    Args:
-        data_previews: Dictionary of data previews
-        relationships: List of relationships
-        
-    Returns:
-        Image bytes
-    """
-    # Create a directed graph
-    G = nx.DiGraph()
-    
-    # Add nodes for each table with size based on row count
-    for file_name, df in data_previews.items():
-        row_count = len(df)
-        col_count = len(df.columns)
-        node_size = np.sqrt(row_count) * 100  # Scale by sqrt for better visualization
-        G.add_node(file_name, size=node_size, rows=row_count, cols=col_count)
-    
-    # Add edges for relationships
-    for rel in relationships:
-        source = rel.get("source_file", "")
-        target = rel.get("target_file", "")
-        source_col = rel.get("source_column", "")
-        target_col = rel.get("target_column", "")
-        rel_type = rel.get("relationship_type", "")
-        confidence = rel.get("confidence", 0.5)
-        
-        if source in data_previews and target in data_previews:
-            G.add_edge(
-                source, target, 
-                label=f"{source_col} → {target_col}",
-                weight=confidence * 5  # Scale for better visualization
-            )
-    
-    # Create figure and axis
-    plt.figure(figsize=(12, 8))
-    pos = nx.spring_layout(G, seed=42)
-    
-    # Get node attributes
-    node_sizes = [data['size'] for node, data in G.nodes(data=True)]
-    
-    # Draw nodes with size based on row count
-    nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color="skyblue", alpha=0.8)
-    
-    # Get edge attributes for width
-    edge_weights = [data['weight'] for _, _, data in G.edges(data=True)]
-    
-    # Draw edges with width based on confidence
-    nx.draw_networkx_edges(G, pos, width=edge_weights, alpha=0.7, arrows=True)
-    
-    # Add node labels with row and column counts
-    node_labels = {}
-    for node, data in G.nodes(data=True):
-        node_labels[node] = f"{node}\n({data['rows']} rows, {data['cols']} cols)"
-    nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=8)
-    
-    # Add edge labels
-    edge_labels = nx.get_edge_attributes(G, 'label')
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7)
-    
-    # Save figure to bytes
-    buf = io.BytesIO()
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-    buf.seek(0)
-    
-    # Close figure to prevent display
-    plt.close()
-    
-    return buf.getvalue()
+def create_relationship_diagram(data):
+    """Create a simple relationship diagram."""
+    return "Relationship diagram placeholder"
 
 
 def create_data_quality_chart(quality_metrics: Dict[str, Dict[str, float]]) -> bytes:

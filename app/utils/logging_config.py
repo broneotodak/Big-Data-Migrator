@@ -92,3 +92,21 @@ def setup_logging(log_level=None):
     logger.debug(f"Logging setup completed with level {log_level}")
     
     return logger
+
+def get_logger(name=None):
+    """
+    Get a logger instance with the specified name
+    
+    Args:
+        name: Logger name, defaults to caller's module name
+        
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    if name is None:
+        # Get the caller's module name
+        import inspect
+        frame = inspect.currentframe().f_back
+        name = frame.f_globals.get('__name__', 'unknown')
+    
+    return logging.getLogger(name)

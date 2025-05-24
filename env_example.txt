@@ -1,0 +1,82 @@
+# Big Data Migrator Configuration Example
+# Copy this content to config/.env and update the values as needed
+
+# API Server Configuration
+API_HOST=localhost
+API_PORT=8000
+API_WORKERS=4
+
+# Logging Configuration
+LOG_LEVEL=INFO
+
+# Memory Management
+MAX_MEMORY_PERCENT=80
+MEMORY_WARNING_THRESHOLD=0.75
+MEMORY_CRITICAL_THRESHOLD=0.90
+
+# File Processing
+DEFAULT_CHUNK_SIZE=10000
+MAX_FILE_SIZE_MB=2048
+ENABLE_PARALLEL_PROCESSING=true
+MAX_CONCURRENT_FILES=3
+
+# LLM Configuration
+# Local LLM (LM Studio)
+LOCAL_LLM_URL=http://127.0.0.1:1234/v1
+LOCAL_LLM_MODEL=claude-3.7-sonnet-reasoning-gemma3-12b
+PRIMARY_LLM=local
+
+# OpenAI Configuration (for fallback)
+ENABLE_ONLINE_FALLBACK=false
+OPENAI_API_KEY=
+ONLINE_LLM_MODEL=gpt-4o
+
+# Anthropic Configuration
+ENABLE_ANTHROPIC=false
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+ANTHROPIC_MAX_TOKENS=4000
+ANTHROPIC_TEMPERATURE=0.2
+
+# Multi-LLM Configuration
+ENABLE_MULTI_LLM=false
+
+# Supabase Configuration
+SUPABASE_URL=
+SUPABASE_KEY=
+SUPABASE_SERVICE_KEY=
+
+# Database Configuration
+DATABASE_URL=
+DATABASE_MAX_CONNECTIONS=10
+DATABASE_TIMEOUT=30
+
+# File Storage
+UPLOAD_DIR=uploads
+EXPORT_DIR=exports
+TEMP_DIR=temp
+CONVERSATION_DIR=conversations
+
+# Security
+SECRET_KEY=your-secret-key-here-change-in-production
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8501
+
+# Streamlit Frontend
+STREAMLIT_PORT=8501
+STREAMLIT_HOST=localhost
+
+# Development Settings
+DEBUG=false
+RELOAD_ON_CHANGE=true
+ENABLE_PROFILING=false
+
+# Data Processing Defaults
+DEFAULT_ENCODING=utf-8
+DEFAULT_DELIMITER=,
+ENABLE_DATA_VALIDATION=true
+ENABLE_SCHEMA_INFERENCE=true
+
+# Export Settings
+DEFAULT_EXPORT_FORMAT=csv
+ENABLE_COMPRESSION=true
+COMPRESSION_LEVEL=6 

@@ -51,6 +51,22 @@ class ResourceOptimizer:
         # Create cache directory if it doesn't exist
         os.makedirs(self.cache_dir, exist_ok=True)
         
+    def get_optimal_chunk_size(self, file_path: str, target_memory_usage_mb: Optional[float] = None) -> int:
+        """
+        Get optimal chunk size for processing a file.
+        
+        Args:
+            file_path: Path to the file to analyze
+            target_memory_usage_mb: Target memory usage for chunks (uses available if None)
+            
+        Returns:
+            Optimal chunk size in number of rows
+        """
+        return self.file_calculator.calculate_optimal_chunk_size(
+            file_path=file_path,
+            target_memory_usage_mb=target_memory_usage_mb
+        )
+
     def process_large_file_in_chunks(self, 
                                     file_path: str, 
                                     process_chunk_fn: Callable[[pd.DataFrame], Any],

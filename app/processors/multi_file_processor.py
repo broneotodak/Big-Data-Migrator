@@ -461,3 +461,49 @@ class MultiFileProcessor(BaseProcessor):
                     "error": str(e)
                 }
             }
+
+    def process_file(self, file_path: str, **kwargs) -> Dict[str, Any]:
+        """
+        Process a single file using the appropriate processor.
+        This method implements the abstract method from BaseProcessor.
+        
+        Args:
+            file_path: Path to the file to process
+            **kwargs: Additional processing parameters
+            
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            # Get appropriate processor for file type
+            processor = self._get_processor_for_file(file_path)
+            
+            if processor:
+                # Use the specific processor to handle the file
+                return processor.process_file(file_path, **kwargs)
+            else:
+                # Return error result for unsupported file type
+                return {
+                    "status": "failed",
+                    "error": f"No processor available for file: {file_path}",
+                    "file_path": file_path,
+                    "stats": {
+                        "status": "failed",
+                        "total_rows_processed": 0,
+                        "processing_time": 0,
+                        "memory_peak": 0
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Error processing file {file_path}: {str(e)}")
+            return {
+                "status": "failed", 
+                "error": str(e),
+                "file_path": file_path,
+                "stats": {
+                    "status": "failed",
+                    "total_rows_processed": 0,
+                    "processing_time": 0,
+                    "memory_peak": 0
+                }
+            }
